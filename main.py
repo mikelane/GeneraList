@@ -8,12 +8,11 @@ you're on the go at the supermarket. Or give generalist a list of instructions t
 you later as you ask her to. Have a recipe that you love? Let GeneraList read the instructions to you as
 you're cooking.
 
-To add: Music Playlists, Video Playlists, Lists of slides for a slideshow. These will require Alexa to
+To add: Music play lists, Video play lists, lists of slides for a slide show. These will require Alexa to
 interact with other web services.
 """
 
 from __future__ import print_function
-
 
 __author__ = 'Mike Lane'
 __email__ = 'mikelane@gmail.com'
@@ -132,12 +131,14 @@ def create_list(intent, session):
                                                                       should_end_session=should_end_session))
 
 
+# TODO Finish this
 def delete_list(intent, session):
     """Use the user id to delete an existing list. This removes all steps and progress and resets the
     session to be empty. This should require explicit confirmation."""
     return None
 
 
+# TODO Finish this
 def load_list(intent, session):
     """Use the user id as a key and try to load the requested list from the database. If the list does not
     exist, offer to create the list. If the list does exist, set the value of the current list in the
@@ -149,6 +150,7 @@ def load_list(intent, session):
     return None
 
 
+# TODO Finish this
 def get_next_item_from_list(intent, session):
     """Use the user id to determine the current list and step. Then execute the corresponding step. For
     now, this should simply be reading out the steps. This should ultimately increment the counter and
@@ -156,6 +158,7 @@ def get_next_item_from_list(intent, session):
     return None
 
 
+# TODO Finish this
 def peek_at_next_item_from_list(intent, session):
     """Use the user id to determine the current list and step. Then execute the corresponding step. For
     now, this should simply be reading out the steps. This should NOT increment the counter. If there are
@@ -164,6 +167,7 @@ def peek_at_next_item_from_list(intent, session):
     return None
 
 
+# TODO Finish this
 def get_prev_item_from_list(intent, session):
     """Use the user id to determine the current list and step. First decrement the step number (this could
     handle a jump of more than one step). Then execute the current step. Should this increment the step
@@ -171,6 +175,7 @@ def get_prev_item_from_list(intent, session):
     return None
 
 
+# TODO Finish this
 def peek_at_prev_item_from_list(intent, session):
     """Use the user id to determine the current list and step. Execute the step but don't change the
     current step number. This is kind of like a reminder. It's more like 'Hey, what was the last step?'
@@ -178,12 +183,14 @@ def peek_at_prev_item_from_list(intent, session):
     return None
 
 
+# TODO Finish this
 def stop(intent, sessions):
     """Stops the current read back, but keeps the information about the current step number and currently
     loaded list."""
     return None
 
 
+# TODO Finish this
 def cancel(intent, sessions):
     """Stops and resets the current list session and resets the current list session to be empty. This
     means that another list will have to be loaded before instructions can be executed."""
@@ -194,9 +201,9 @@ def cancel(intent, sessions):
 
 def on_session_started(session_started_request, session):
     """ Called when the session starts """
-
     print('on_session_started requestId={}, sessionId={}'.format(session_started_request['requestId'],
                                                                  session['sessionId']))
+    # TODO: This is where we load the stored session (if any) from DynamoDB and load it into the session
 
 
 def on_launch(launch_request, session):
