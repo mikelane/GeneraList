@@ -123,7 +123,7 @@ def create_list(intent, session):
     statuses = []
     reprompt_text = None
 
-    speech_output = "I'm working on that feature."  # TODO change this
+    speech_output = "I'm working on the {} feature.".format(card_title)  # TODO change this
     return build_response(session_attributes=session_attributes,
                           speechlet_response=build_speechlet_response(title=card_title,
                                                                       output=speech_output,
@@ -147,7 +147,18 @@ def load_list(intent, session):
 
     The key takeaway is that this function persists a session by setting the state in the database. That's
     it. It's the responsibility of some other intent to actually execute the step (whatever that means)."""
-    return None
+    card_title = intent['name']
+    session_attributes = {}
+    should_end_session = True  # TODO change this to false
+    statuses = []
+    reprompt_text = None
+
+    speech_output = "I'm working on the {} feature.".format(card_title)  # TODO change this
+    return build_response(session_attributes=session_attributes,
+                          speechlet_response=build_speechlet_response(title=card_title,
+                                                                      output=speech_output,
+                                                                      reprompt_text=reprompt_text,
+                                                                      should_end_session=should_end_session))
 
 
 # TODO Finish this
