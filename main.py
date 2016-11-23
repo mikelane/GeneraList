@@ -14,6 +14,8 @@ interact with other web services.
 
 from __future__ import print_function
 
+import boto3
+
 __author__ = 'Mike Lane'
 __email__ = 'mikelane@gmail.com'
 
@@ -21,8 +23,15 @@ __email__ = 'mikelane@gmail.com'
 APP_ID = 'amzn1.ask.skill.e208302c-710b-4f30-9344-d0ae6ca3b774'
 SKILL_NAME = 'GeneralList'
 SKILL_INVOKE = 'generalist'
-DB_TABLENAME = 'lists'
 DB_REGION = 'us-east-1'
+
+# Global session information
+stored_session = {
+    'current_list': None,
+    'current_step': None
+}
+SESSION_TABLENAME = 'StoredSessions'
+LISTS_TABLENAME = 'Lists'
 
 
 # --------------- Main handler ------------------
@@ -208,13 +217,32 @@ def cancel(intent, sessions):
     return None
 
 
+# --------------- Session Persistence ------------------
+
+def load_session(curr_session):
+    """Use the current session's userId to load the stored session information"""
+    global stored_session  # Needed since we will modify the stored_session
+    userId = curr_session['user']['userId']
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(SESSION_TABLENAME)
+    response = table.get_item(Key={'userId': userId})
+    if response:
+        try:
+            stored_session['current_list'] = response['item']['currentList']
+            stored_session['current_step'] = response['item']['currentStep']
+        except KeyError as e:
+            pass  # There is no current session, and that's okay
+    else:
+        print('The load_session function got no response from the database.')
+
+
 # --------------- Events ------------------
 
 def on_session_started(session_started_request, session):
     """ Called when the session starts """
     print('on_session_started requestId={}, sessionId={}'.format(session_started_request['requestId'],
                                                                  session['sessionId']))
-    # TODO: This is where we load the stored session (if any) from DynamoDB and load it into the session
+    load_session(curr_session=session)
 
 
 def on_launch(launch_request, session):
