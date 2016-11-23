@@ -15,6 +15,7 @@ interact with other web services.
 from __future__ import print_function
 
 import boto3
+import botocore
 
 __author__ = 'Mike Lane'
 __email__ = 'mikelane@gmail.com'
@@ -24,6 +25,7 @@ APP_ID = 'amzn1.ask.skill.e208302c-710b-4f30-9344-d0ae6ca3b774'
 SKILL_NAME = 'GeneralList'
 SKILL_INVOKE = 'generalist'
 DB_REGION = 'us-east-1'
+DB_URL = "https://dynamodb.{}.amazonaws.com".format(DB_REGION)
 
 # Global session information
 stored_session = {
@@ -223,14 +225,20 @@ def load_session(curr_session):
     """Use the current session's userId to load the stored session information"""
     global stored_session  # Needed since we will modify the stored_session
     userId = curr_session['user']['userId']
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(SESSION_TABLENAME)
-    response = table.get_item(Key={'userId': userId})
+    # dynamodb = boto3.resource('dynamodb', region_name=DB_REGION, endpoint_url=DB_URL)
+    dynamo = boto3.resource('dynamodb').Table('StoredSession')
+    try:
+        response = dynamo.get_item(Key={'userId': userId})
+    except botocore.exceptions.ClientError as e:
+        print("ERROR: {}".format(e.response))
+        return
+
     if response:
         try:
-            stored_session['current_list'] = response['item']['currentList']
-            stored_session['current_step'] = response['item']['currentStep']
-        except KeyError as e:
+            stored_session['current_list'] = response['Item']['currentList']
+            stored_session['current_step'] = response['Item']['currentStep']
+            print("stored_session: {}".format(stored_session))
+        except KeyError:
             pass  # There is no current session, and that's okay
     else:
         print('The load_session function got no response from the database.')
