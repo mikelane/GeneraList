@@ -223,9 +223,8 @@ def cancel(intent, sessions):
 
 def load_session(curr_session):
     """Use the current session's userId to load the stored session information"""
-    global stored_session  # Needed since we will modify the stored_session
+    global stored_session  # global needed since we will modify stored_session
     userId = curr_session['user']['userId']
-    # dynamodb = boto3.resource('dynamodb', region_name=DB_REGION, endpoint_url=DB_URL)
     dynamo = boto3.resource('dynamodb').Table('StoredSession')
     try:
         response = dynamo.get_item(Key={'userId': userId})
@@ -242,6 +241,19 @@ def load_session(curr_session):
             pass  # There is no current session, and that's okay
     else:
         print('The load_session function got no response from the database.')
+
+def store_session(userId, currentList, currentStep):
+    """Store the requested information in the StoredSession table."""
+    dynamo = boto3.resource('dynamodb').Table('StoredSession')
+    try:
+        response = dynamo.update_item(Key={
+            'userId': userId,
+            'currentList': currentList,
+            'currentStep': currentStep
+        })
+    except botocore.exceptions.ClientError as e:
+        print('ERROR: {}'.format(e.response))
+
 
 
 # --------------- Events ------------------
