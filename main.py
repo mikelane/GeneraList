@@ -16,6 +16,7 @@ from __future__ import print_function
 
 import boto3
 import botocore
+import botocore.exceptions
 
 __author__ = 'Mike Lane'
 __email__ = 'mikelane@gmail.com'
@@ -32,7 +33,7 @@ stored_session = {
     'current_list': None,
     'current_step': None
 }
-SESSION_TABLENAME = 'StoredSessions'
+SESSION_TABLENAME = 'StoredSession'
 LISTS_TABLENAME = 'Lists'
 
 
@@ -98,12 +99,21 @@ def build_response(session_attributes, speechlet_response):
 def get_welcome_response():
     """ If we wanted to initialize the session to have some attributes we could add those here"""
     session_attributes = {}
-
     card_title = 'Welcome to GeneraList'
-    speech_output = 'Welcome to generalist. Do you want to create, edit, or access a list?'
-    # If the user either does not reply to the welcome message or says something
-    # that is not understood, they will be prompted again with this text.
-    reprompt_text = "I didn't get that. Say create, edit, or access."
+
+    if stored_session['current_list']:
+        speech_output = "Welcome back. Go to the next item in your {} list by saying 'next'. " \
+                        "Repeat your current step by saying 'repeat'. " \
+                        "Edit your list by saying 'edit'. " \
+                        "Or you can say things like: " \
+                        "'review', 'preview', 'load', or 'create'.".format(stored_session['current_list'])
+        reprompt_text = "To continue with your {} list say 'next', 'repeat', 'review', 'preview' or " \
+                        "'edit'." \
+                        "Say 'load' or 'create' to work with a different list."
+    else:
+        speech_output = "Welcome to generalist. Do you want to: 'load', 'create', or 'edit' a list?"
+        reprompt_text = "Say: 'load', 'create', or 'edit'."
+
     should_end_session = False
     return build_response(session_attributes=session_attributes,
                           speechlet_response=build_speechlet_response(title=card_title,
@@ -225,9 +235,9 @@ def load_session(curr_session):
     """Use the current session's userId to load the stored session information"""
     global stored_session  # global needed since we will modify stored_session
     userId = curr_session['user']['userId']
-    dynamo = boto3.resource('dynamodb').Table('StoredSession')
+    StoredSessionTable = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
     try:
-        response = dynamo.get_item(Key={'userId': userId})
+        response = StoredSessionTable.get_item(Key={'userId': userId})
     except botocore.exceptions.ClientError as e:
         print("ERROR: {}".format(e.response))
         return
@@ -236,24 +246,26 @@ def load_session(curr_session):
         try:
             stored_session['current_list'] = response['Item']['currentList']
             stored_session['current_step'] = response['Item']['currentStep']
-            print("stored_session: {}".format(stored_session))
-        except KeyError:
-            pass  # There is no current session, and that's okay
+        except KeyError:  # If either currentList or currentStep was not in the response
+            stored_session['current_list'] = None
+            stored_session['current_step'] = None
+        print("userId: {}\n"
+              "Loaded: stored_session = {}".format(userId, stored_session))
     else:
         print('The load_session function got no response from the database.')
 
-def store_session(userId, currentList, currentStep):
+
+def store_session(curr_session, stored_session):
     """Store the requested information in the StoredSession table."""
-    dynamo = boto3.resource('dynamodb').Table('StoredSession')
+    StoredSessionTable = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
     try:
-        response = dynamo.update_item(Key={
-            'userId': userId,
-            'currentList': currentList,
-            'currentStep': currentStep
+        response = StoredSessionTable.update_item(Key={
+            'userId': curr_session['user']['userId'],
+            'currentList': stored_session['currentList'],
+            'currentStep': stored_session['currentStep']
         })
     except botocore.exceptions.ClientError as e:
         print('ERROR: {}'.format(e.response))
-
 
 
 # --------------- Events ------------------
@@ -299,4 +311,4 @@ def on_session_ended(session_ended_request, session):
     Is not called when the skill returns should_end_session=true"""
     print('on_session_ended requestId={}, sessionId={}'.format(session_ended_request['requestId'],
                                                                session['sessionId']))
-    # add cleanup logic here
+    store_session(curr_session=session, stored_session=stored_session)
