@@ -88,7 +88,7 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session):
 
 def build_response(session_attributes, speechlet_response):
     return {
-        'version': '0.1',
+        'version': '0.2',
         'sessionAttributes': session_attributes,
         'response': speechlet_response
     }
@@ -96,17 +96,17 @@ def build_response(session_attributes, speechlet_response):
 
 # --------------- Functions that control the skill's behavior ------------------
 
-def get_welcome_response():
+def get_welcome_response(session):
     """ If we wanted to initialize the session to have some attributes we could add those here"""
-    session_attributes = {}
+    session_attributes = session.get('attributes', {})
     card_title = 'Welcome to GeneraList'
 
-    if stored_session['current_list']:
+    if session_attributes['currentList']:
         speech_output = "Welcome back. Go to the next item in your {} list by saying 'next'. " \
                         "Repeat your current step by saying 'repeat'. " \
                         "Edit your list by saying 'edit'. " \
                         "Or you can say things like: " \
-                        "'review', 'preview', 'load', or 'create'.".format(stored_session['current_list'])
+                        "'review', 'preview', 'load', or 'create'.".format(session_attributes['currentList'])
         reprompt_text = "To continue with your {} list say 'next', 'repeat', 'review', 'preview' or " \
                         "'edit'." \
                         "Say 'load' or 'create' to work with a different list."
@@ -122,15 +122,99 @@ def get_welcome_response():
                                                                       should_end_session=should_end_session))
 
 
-def handle_session_end_request():
-    card_title = 'Session Ended'
-    speech_output = 'Goodbye.'
-    # Setting this to true ends the session and exits the skill.
+def get_help_response(session):
+    """If the user asks for help, smartly determine what help they want by looking at their session values."""
+    session_attributes = session.get('attributes')
     should_end_session = True
+
+    if session_attributes['currentTask'] and 'PLAY' == session_attributes['currentTask']:
+        speech_output = "You currently have a list playback session in progress. To hear the next item" \
+                        "in your list, say: 'next'."
+        if session_attributes['currentStep'] > '1':
+            speech_output += "To go back to the previous item in your list, say 'previous'. "
+        speech_output += "To stop playback so you can resume later, say: 'stop'. To stop and unload your " \
+                         "list, say: 'cancel'. If you want to load a new list, say: 'Alexa, ask generalist " \
+                         "to load' and then a list name. To create a new list, say: 'Alexa, ask generalist " \
+                         "to create a new list'."
+    elif session_attributes['currentTask'] and 'CREATE' == session_attributes['currentTask']:
+        speech_output = "You are in the process of creating a list. To add a new item, say: 'Alexa, " \
+                        "tell generalist to add item'. To finish editing your list and to save it for " \
+                        "later, say: 'Alexa, tell generalist to stop'. To cancel your list and lose any " \
+                        "saved progress say: 'Alexa, tell generalist cancel'."
+    elif session_attributes['currentTask'] and 'EDIT' == session_attributes['currentTask']:
+        speech_output = "You are in the process of creating a list. To add a new item, say: 'Alexa, " \
+                        "tell generalist to add item'. To finish editing your list and to save it for " \
+                        "later, say: 'Alexa, tell generalist to stop'."
+    else:
+        return get_welcome_response(session)
+
+def handle_session_stop_request(session):
+    card_title = 'Stop'
+    should_end_session = True
+    session_attributes = session.get('attributes', {})
+    speech_output = ""
+    reprompt_text = ""
+
+    # If the session is in create or edit mode, update the list, and set the stored status accordingly
+    # Also reset the session to
+    if session_attributes['currentTask'] in ['CREATE', 'EDIT']:
+        # Update the list to start at the first step when loaded.
+        session_attributes['currentStep'] = '1'
+        update_list(session=session)
+
+        speech_output = "Your list {lst} has been saved. To access your list say: " \
+                        "'Alexa, tell generalist to load {lst}".format(lst=session_attributes['currentList'])
+        reprompt_text = ""
+
+        # Clear out the stored session, but only if we're in create or edit mode
+        session_attributes['currentTask'] = None
+        session_attributes['currentList'] = None
+        session_attributes['currentStep'] = None
+        update_session(session=session)
+
+    else:
+        speech_output = "Goodbye."
+        reprompt_text = ""
+
     return build_response(session_attributes={},
                           speechlet_response=build_speechlet_response(title=card_title,
                                                                       output=speech_output,
-                                                                      reprompt_text=None,
+                                                                      reprompt_text=reprompt_text,
+                                                                      should_end_session=should_end_session))
+
+
+def handle_session_cancel_request(session):
+    # TODO smartly handle cancel requests.
+    card_title = 'Session Ended'
+    session_attributes = session.get('attributes', {})
+
+    speech_output = ""
+    reprompt_text = ""
+    should_end_session = True
+
+    # If in create mode, but NOT edit mode, delete the list.
+    if session_attributes['currentTask'] == 'CREATE':
+        lists_table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
+        try:
+            lists_table.delete_item(
+                Key={'userId': session['user']['userId'],
+                     'listName': session_attributes['listName']},
+                ReturnValues='NONE'
+            )
+        except botocore.exceptions.ClientError as e:
+            print("ERROR: {}".format(e.response))
+            raise
+        
+    # Clear out the stored session
+    session_attributes['currentTask'] = None
+    session_attributes['currentList'] = None
+    session_attributes['currentStep'] = None
+    update_session(session=session)
+    
+    return build_response(session_attributes={},
+                          speechlet_response=build_speechlet_response(title=card_title,
+                                                                      output=speech_output,
+                                                                      reprompt_text=reprompt_text,
                                                                       should_end_session=should_end_session))
 
 
@@ -139,12 +223,90 @@ def create_list(intent, session):
     validate and ask if they want to add another step or stop. If the list already exists, just error out
     with a message that tells the user to modify a list instead."""
     card_title = intent['name']
-    session_attributes = {}
-    should_end_session = True  # TODO change this to false
-    statuses = []
-    reprompt_text = None
 
-    speech_output = "I'm working on the {} feature.".format(card_title)  # TODO change this
+    # Before creating a list, make sure the current list's session is stored
+    update_list(session=session)
+
+    # Now create a new list session
+    session_attributes = session.get('attributes', {})
+    session_attributes['currentTask'] = 'CREATE'
+    session_attributes['currentStep'] = '0'
+    session_attributes['currentList'] = None
+
+    should_end_session = False
+
+    if 'listName' in intent['slots'] and 'value' in intent['slots']['listName']:
+        session_attributes['listName'] = intent['slots']['listName']['value']
+        speech_output = "Creating a list named '{}'. " \
+                        "Now say: 'Add item.".format(session_attributes['listName'])
+        reprompt_text = "You can say: 'Add item,' " \
+                        "or you can say something like: 'Add: Set oven to 300 degrees.'"
+    else:
+        speech_output = "What is the name of your list?"
+        reprompt_text = "Please tell me the name of your list."
+
+    return build_response(session_attributes=session_attributes,
+                          speechlet_response=build_speechlet_response(title=card_title,
+                                                                      output=speech_output,
+                                                                      reprompt_text=reprompt_text,
+                                                                      should_end_session=should_end_session))
+
+
+def add_item(intent, session):
+    """Adds an item to the end of a list."""
+    card_title = intent['name']
+    session_attributes = session.get('attributes', {})
+
+    if session_attributes['currentTask'] not in ['CREATE', 'EDIT']:
+        # If not in create or edit mode, we can't add an item.
+        should_end_session = True
+        speech_output = "I can't add a task if you're not in 'create' or 'edit' modes. Please say: " \
+                        "'Alexa, ask generalist to create a new list.' " \
+                        "Or say: 'Alexa, ask generalist to edit,' and a list name."
+        reprompt_text = ""
+    elif 'Item' in intent['slots'] and 'value' not in intent['slots']['Item']:
+        should_end_session = False
+        speech_output = "Say: 'Add,' and the next item in the list. For example, say: 'Add preheat the oven" \
+                        "to 300 degrees'."
+        reprompt_text = "To add an item to the list, say: 'Add,' and the next item in the list."
+
+    elif 'Item' in intent['slots'] and 'value' in intent['slots']['Item']:
+        # If we are in create or edit mode. Add items to the session_attributes
+        should_end_session = False
+        currentStep = str(int(session_attributes['currentStep'] + 1))
+
+        # Add it to the database
+        lists_table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
+        try:
+            lists_table.update_item(
+                Key={'userId': session['user']['userId'],
+                     'listName': session_attributes['currentList']},
+                UpdateExpression="set numberOfSteps = :ns, items.{} = :it".format(currentStep),
+                ExpressionAttributeValues={
+                    ':ns': session_attributes['currentStep'],
+                    ':it': intent['slots']['Item']['value']
+                },
+                ReturnValues="NONE"
+            )
+        except botocore.exceptions.ClientError as e:
+            print('ERROR: {}'.format(e.response))
+            raise
+
+        speech_output = "Adding '{}'. " \
+                        "Say: 'Add,' and the next item in the list, " \
+                        "or say: 'stop' or 'save' to save the list. " \
+                        "To cancel and lose your work, say: 'cancel'.".format(
+            intent['slots']['Item']['value'])
+        reprompt_text = "To add another item say: 'Add,' and the next item in the list." \
+                        "Otherwise say: 'stop' or 'save' to save your progress or 'cancel'" \
+                        "discard your list."
+    else:
+        should_end_session = True
+        speech_output = "I didn't understand you." \
+                        "Say: 'Add,' and the next item in the list, " \
+                        "or say: 'all done'."
+        reprompt_text = ""
+
     return build_response(session_attributes=session_attributes,
                           speechlet_response=build_speechlet_response(title=card_title,
                                                                       output=speech_output,
@@ -231,41 +393,72 @@ def cancel(intent, sessions):
 
 # --------------- Session Persistence ------------------
 
-def load_session(curr_session):
+def load_session(session):
     """Use the current session's userId to load the stored session information"""
-    global stored_session  # global needed since we will modify stored_session
-    userId = curr_session['user']['userId']
-    StoredSessionTable = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
+    userId = session['user']['userId']
+    session_attributes = session.get('attributes', {})
+
+    stored_session_table = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
+
     try:
-        response = StoredSessionTable.get_item(Key={'userId': userId})
+        response = stored_session_table.get_item(Key={'userId': userId})
     except botocore.exceptions.ClientError as e:
         print("ERROR: {}".format(e.response))
         return
 
-    if response:
-        try:
-            stored_session['current_list'] = response['Item']['currentList']
-            stored_session['current_step'] = response['Item']['currentStep']
-        except KeyError:  # If either currentList or currentStep was not in the response
-            stored_session['current_list'] = None
-            stored_session['current_step'] = None
-        print("userId: {}\n"
-              "Loaded: stored_session = {}".format(userId, stored_session))
-    else:
-        print('The load_session function got no response from the database.')
-
-
-def store_session(curr_session, stored_session):
-    """Store the requested information in the StoredSession table."""
-    StoredSessionTable = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
     try:
-        response = StoredSessionTable.update_item(Key={
-            'userId': curr_session['user']['userId'],
-            'currentList': stored_session['currentList'],
-            'currentStep': stored_session['currentStep']
-        })
+        session_attributes['currentList'] = response['Item']['currentList']
+        session_attributes['currentTask'] = response['Item']['currentTask']
+        if response['Item']['currentTask'] in ['CREATE', 'EDIT']:
+            session_attributes['currentStep'] = response['Item']['numberOfSteps']
+        else:
+            session_attributes['currentStep'] = response['Item']['currentStep']
+    except KeyError:  # If either currentList or currentStep was not in the response
+        session_attributes['currentList'] = None
+        session_attributes['currentTask'] = None
+        session_attributes['currentStep'] = None
+    print("userId: {}\n"
+          "Loaded: session_attributes = {}".format(userId, session_attributes))
+
+
+def update_session(session):
+    """Store the requested information in the StoredSession table."""
+    session_attributes = session.get('attributes', {})
+    stored_session_table = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
+    try:
+        stored_session_table.update_item(
+            Key={'userId': session['user']['userId']},
+            UpdateExpression="set currentList = :l, currentTask = :t, currentStep = :s",
+            ExpressionAttributeValues={
+                ':l': session_attributes['currentList'],
+                ':t': session_attributes['currentTask'],
+                ':s': session_attributes['currentStep']
+            },
+            ReturnValues="NONE"
+        )
     except botocore.exceptions.ClientError as e:
         print('ERROR: {}'.format(e.response))
+        raise
+
+
+def update_list(session):
+    """Store the current session information into the list."""
+    session_attributes = session.get('attributes', {})
+    lists_table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
+
+    try:
+        lists_table.update_item(
+            Key={'userId': session['user']['userId'],
+                 'listName': session_attributes['currentList']},
+            UpdateExpression="set currentStep = :c",
+            ExpressionAttributeValues={
+                ':c': session_attributes['currentStep']
+            },
+            ReturnValues="NONE"
+        )
+    except botocore.exceptions.ClientError as e:
+        print('ERROR: {}'.format(e.response))
+        raise
 
 
 # --------------- Events ------------------
@@ -274,14 +467,14 @@ def on_session_started(session_started_request, session):
     """ Called when the session starts """
     print('on_session_started requestId={}, sessionId={}'.format(session_started_request['requestId'],
                                                                  session['sessionId']))
-    load_session(curr_session=session)
+    load_session(session=session)
 
 
 def on_launch(launch_request, session):
     """ Called when the user launches the skill without specifying what they want"""
     print('on_launch requestId={}, sessionId={}'.format(launch_request['requestId'], session['sessionId']))
     # Dispatch to your skill's launch
-    return get_welcome_response()
+    return get_welcome_response(session=session)
 
 
 def on_intent(intent_request, session):
@@ -296,12 +489,16 @@ def on_intent(intent_request, session):
         return load_list(intent, session)
     elif intent_name == 'CreateListIntent':
         return create_list(intent, session)
+    elif intent_name == 'AddItemIntent':
+        return add_item(intent, session)
     elif intent_name == 'AMAZON.NextIntent':
         return get_next_item_from_list(intent, session)
     elif intent_name == 'AMAZON.HelpIntent':
-        return get_welcome_response()
-    elif intent_name == 'AMAZON.CancelIntent' or intent_name == 'AMAZON.StopIntent':
-        return handle_session_end_request()
+        return get_help_response(session)
+    elif intent_name == 'AMAZON.StopIntent':
+        return handle_session_stop_request(session)
+    elif intent_name == 'AMAZON.CancelIntent':
+        return handle_session_cancel_request(session)
     else:
         raise ValueError('Invalid intent')
 
@@ -311,4 +508,4 @@ def on_session_ended(session_ended_request, session):
     Is not called when the skill returns should_end_session=true"""
     print('on_session_ended requestId={}, sessionId={}'.format(session_ended_request['requestId'],
                                                                session['sessionId']))
-    store_session(curr_session=session, stored_session=stored_session)
+    update_session(session=session)
