@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GeneraList Intent Schema</title>
+  <h3>Intent Schema</h3>
+  <pre>{
+  "intents": [
+    {
+      "intent": "LoadListIntent",
+      "slots": [
+        {
+          "name": "listName",
+          "type": "LIST_OF_EXAMPLE_LIST_NAMES"
+        }
+      ]
+    },
+    {
+      "intent": "CreateListIntent",
+      "slots": [
+        {
+          "name": "listName",
+          "type": "LIST_OF_EXAMPLE_LIST_NAMES"
+        }
+      ]
+    },
+    {
+      "intent": "AddItemIntent",
+      "slots": [
+        {
+          "name": "Item",
+          "type": "LIST_OF_EXAMPLE_ITEMS"
+        }
+      ]
+    },
+    {
+      "intent": "EditListIntent",
+      "slots": [
+        {
+          "name": "listName",
+          "type": "LIST_OF_EXAMPLE_LIST_NAMES"
+        }
+      ]
+    },
+    {
+      "intent": "SaveIntent"
+    },
+    {
+      "intent": "PeekIntent"
+    },
+    {
+      "intent": "ReviewIntent"
+    },
+    {
+      "intent": "DeleteIntent",
+      "slots": [
+        {
+	        "name": "listName",
+			"type": "LIST_OF_EXAMPLE_LIST_NAMES"
+        }
+      ]
+    },
+    {
+      "intent": "AMAZON.HelpIntent"
+    },
+    {
+      "intent": "AMAZON.StopIntent"
+    },
+    {
+      "intent": "AMAZON.CancelIntent"
+    },
+    {
+      "intent": "AMAZON.NextIntent"
+    },
+    {
+      "intent": "AMAZON.PreviousIntent"
+    },
+    {
+      "intent": "AMAZON.StartOverIntent"
+    }
+  ]
+}</pre>
+
+  <h2>Custom Slot Types</h2>
+  <pre>
+    <ul>
+      <li>
+        LIST_OF_EXAMPLE_ITEMS: { Set oven to 300 degrees | Place turkey into brine | Solder LED onto circuit
+        board }
+      </li>
+      <li>
+        LIST_OF_EXAMPLE_LIST_NAMES: { brownie recipe | oil change instructions | christmas list | thanksgiving
+        timeline | recipe | instructions | list | timeline }
+      </li>
+    </ul>
+  </pre>
+
+  <h2>Sample Utterances</h2>
+  <pre>
+    CreateListIntent create a list
+    CreateListIntent create a list named {listName}
+    CreateListIntent create list {listName}
+    CreateListIntent make list {listName}
+    LoadListIntent load {listName}
+    LoadListIntent give me {listName}
+    EditListIntent edit list
+    EditListIntent edit
+    EditListIntent edit list {listName}
+    EditListIntent edit {listName}
+    AddItemIntent add item
+    AddItemIntent add item {Item}
+    AddItemIntent add {Item}
+    PeekIntent peek
+    PeekIntent preview
+    PeekIntent preview next
+    PeekIntent peek at next
+    PeekIntent what is coming up next
+    PeekIntent what's coming up next
+    ReviewIntent review
+    ReviewIntent what was the last item
+    ReviewIntent remind me what I did last
+    DeleteIntent delete
+    DeleteIntent delete my list
+    DeleteIntent delete {listName}
+    DeleteIntent delete list {listName}
+    SaveIntent save
+  </pre>
+</head>
+<body>
+
+</body>
+</html>
