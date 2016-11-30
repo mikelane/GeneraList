@@ -263,6 +263,9 @@ def create_list(intent, session):
     with a message that tells the user to modify a list instead."""
     card_title = intent['name']
 
+    print("***CREATE LIST intent: {}".format(intent))
+    print("***CREATE LIST session: {}".format(session))
+
     if 'value' in intent['slots']['listName']:
         # First make sure we're not creating a list with the same name we're on
         if intent['slots']['listName']['value'] == session['attributes']['currentList']:
@@ -282,12 +285,12 @@ def create_list(intent, session):
             try:
                 response = table.get_item(Key={
                     'userId': session['user']['userId'],
-                    'listName': session['attributes']['currentList']
+                    'listName': intent['slots']['listName']['value']
                 })
             except botocore.exceptions.ClientError as e:
                 print("ERROR: create_list database failure: {}".format(e.response))
                 raise
-
+            print("***CREATE LIST db response: {}".format(response))
             if 'Item' not in response:
                 # Otherwise, set the session attributes accordingly and create the list
                 session['attributes']['currentList'] = intent['slots']['listName']['value']
@@ -303,8 +306,8 @@ def create_list(intent, session):
                                 "or you can say something like: 'Add: Set oven to 300 degrees.'"
                 should_end_session = False
             else:
-                speech_output = "You can't create a new list with the same name as one of your current lists. " \
-                                "Either choose a new name or delete the list with the same name."
+                speech_output = "You can't create a new list with the same name as one of your current " \
+                                "lists. Either choose a new name or delete the list with the same name."
                 reprompt_text = ""
                 should_end_session = True
                 return build_response(session_attributes=session['attributes'],
@@ -318,7 +321,6 @@ def create_list(intent, session):
                         "example say, 'Create brownie recipe.'"
         should_end_session = False
 
-
     print("***END OF CREATE, session: {}".format(session))
 
     return build_response(session_attributes=session['attributes'],
@@ -331,14 +333,15 @@ def create_list(intent, session):
 def edit_list(intent, session):
     """Edit a list (currently only supports adding to the list)."""
     card_title = "Edit the List"
-    speech_output = "You can edit your list by saying: 'add' and then an item. Or say: 'save'."
-    reprompt_text = "Say: 'add' and an item. Or say: 'save'."
-    should_end_session = False
 
-    session['attributes']['currentTask'] = 'EDIT'
+    # Update the session and current list in case this gets called during the middle of a session
+    update_session(session=session)
+    update_list(session=session)
 
+    # Editing something other than the current list
     if 'value' in intent['slots']['listName'] and \
                     intent['slots']['listName']['value'] != session['attributes']['currentList']:
+        # Try to get the desired list from the database
         table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
         try:
             response = table.get_item(Key={
@@ -349,14 +352,39 @@ def edit_list(intent, session):
             print("ERROR: edit_list database get_item failed: {}".format(e.response))
             raise
         else:
-            session['attributes']['currentList'] = response['Item']['listName']
-            session['attributes']['currentStep'] = response['Item']['numberOfSteps']
-            session['attributes']['listItems'] = response['Item']['listItems']
-            session['attributes']['numberOfSteps'] = response['Item']['numberOfSteps']
-    else:
+            if 'Item' in response:  # Found the desired list, switch over to that one and go into edit mode
+                session['attributes']['currentTask'] = 'EDIT'
+                session['attributes']['currentList'] = response['Item']['listName']
+                session['attributes']['currentStep'] = response['Item']['numberOfSteps']
+                session['attributes']['listItems'] = response['Item']['listItems']
+                session['attributes']['numberOfSteps'] = response['Item']['numberOfSteps']
+                update_session(session=session)
+                speech_output = "Editing list {}. Say: 'add' and the next item.".format(
+                    session['attributes']['currentList'])
+                reprompt_text = "You are currently editing {}. Say: 'add' and the next item to add to the " \
+                                "list".format(session['attributes']['currentList'])
+                should_end_session = False
+            else:  # Didn't find the desired list in the database.
+                speech_output = "I didn't find a list named {}.".format(intent['slots']['listName']['value'])
+                reprompt_text = ""
+                should_end_session = True
+    # Desired list is current list
+    elif intent['slots']['listName']['value'] == session['attributes']['currentList']:
+        session['attributes']['currentTask'] = 'EDIT'
         session['attributes']['currentStep'] = session['attributes']['numberOfSteps']
-
-    update_session(session=session)
+        update_session(session=session)
+        speech_output = "Editing list {}. Say: 'add' and the next item.".format(
+            session['attributes']['currentList'])
+        reprompt_text = "You are currently editing {}. Say: 'add' and the next item to add to the " \
+                        "list".format(session['attributes']['currentList'])
+        should_end_session = False
+    # Desired list is unspecified
+    else:
+        speech_output = "Tell me what list you want to edit. Say: 'edit' and the name of a list that " \
+                        "you've already created. Or say: 'create' and a list name to create a new list."
+        reprompt_text = "Say: 'edit' and the name of a list that you've already created. Or say: 'create' " \
+                        "and a list name to create a new list."
+        should_end_session = False
 
     return build_response(session_attributes=session['attributes'],
                           speechlet_response=build_speechlet_response(title=card_title,
@@ -383,7 +411,7 @@ def add_item(intent, session):
         reprompt_text = "To add an item to the list, say: 'Add,' and the next item in the list. For " \
                         "example, you can say: 'Add, 1 teaspoon of salt.'"
 
-    elif 'Item' in intent['slots'] and 'value' in intent['slots']['Item']:
+    elif 'value' in intent['slots']['Item']:
         # If we are in create or edit mode. Add items to the session_attributes
         should_end_session = False
         session['attributes']['currentStep'] = curr_step = session_attributes['currentStep'] + 1
@@ -393,9 +421,12 @@ def add_item(intent, session):
         # Add it to the database
         update_list(session=session)
 
-        speech_output = "Adding '{}'. " \
-                        "Say: 'Add,' and the next item. " \
-                        "Or say: 'save', ".format(intent['slots']['Item']['value'])
+        speech_output = "Adding '{}'. ".format(intent['slots']['Item']['value'])
+        if session['attributes']['currentStep'] < 2:
+            speech_output += "Say: 'Add,' and the next item. Or say: 'save' or 'stop' to save the list. " \
+                             "Saying 'cancel' stops without saving."
+        elif 2 <= session['attributes']['currentStep'] < 5:
+            speech_output += "Say: 'add,' and an item. Or say: 'save'."
         reprompt_text = "To add another item say: 'Add,' and the next item in the list." \
                         "Otherwise say: 'stop' or 'save' to save your progress or 'cancel'" \
                         "discard your list."
