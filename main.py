@@ -134,7 +134,7 @@ def get_help_response(session):
     if session_attributes['currentTask'] == 'PLAY':
         speech_output = "You currently have a list playback session in progress. To hear the next item" \
                         "in your list, say: 'next'."
-        if session_attributes['currentStep'] != 'NONE' and session_attributes['currentStep'] > '1':
+        if session_attributes['currentStep'] > 1:
             speech_output += "To go back to the previous item in your list, say 'previous'. "
         speech_output += "To stop playback so you can resume later, say: 'stop'. To stop and unload your " \
                          "list, say: 'cancel'. If you want to load a new list, say: 'ask generalist " \
@@ -167,7 +167,7 @@ def handle_save_intent(session):
     # If the session is in create or edit mode, update the list, and set the stored status accordingly
     if session_attributes['currentTask'] in ['CREATE', 'EDIT']:
         # Update the list to start at the first step when loaded.
-        session['attributes']['currentStep'] = '0'
+        session['attributes']['currentStep'] = 0
         update_list(session=session)
 
         speech_output = "Your list {lst} has been saved and loaded. " \
@@ -199,7 +199,7 @@ def handle_session_stop_request(session):
     # If the session is in create or edit mode, update the list, and set the stored status accordingly
     if session_attributes['currentTask'] in ['CREATE', 'EDIT']:
         # Update the list to start at the first step when loaded.
-        session['attributes']['currentStep'] = '0'
+        session['attributes']['currentStep'] = 0
         update_list(session=session)
 
         speech_output = "Your list {lst} has been saved and loaded. " \
@@ -247,7 +247,7 @@ def handle_session_cancel_request(session):
     # Clear out the stored session
     session['attributes']['currentTask'] = "NONE"
     session['attributes']['currentList'] = "NONE"
-    session['attributes']['currentStep'] = "NONE"
+    session['attributes']['currentStep'] = 0
     update_session(session=session)
 
     return build_response(session_attributes=session['attributes'],
@@ -292,8 +292,8 @@ def create_list(intent, session):
                 # Otherwise, set the session attributes accordingly and create the list
                 session['attributes']['currentList'] = intent['slots']['listName']['value']
                 session['attributes']['currentTask'] = 'CREATE'
-                session['attributes']['currentStep'] = '0'
-                session['attributes']['numberOfSteps'] = '0'
+                session['attributes']['currentStep'] = 0
+                session['attributes']['numberOfSteps'] = 0
                 session['attributes']['listItems'] = {}
                 update_session(session=session)
                 speech_output = "Creating a list named '{}'. " \
@@ -386,9 +386,9 @@ def add_item(intent, session):
     elif 'Item' in intent['slots'] and 'value' in intent['slots']['Item']:
         # If we are in create or edit mode. Add items to the session_attributes
         should_end_session = False
-        session['attributes']['currentStep'] = curr_step = str(int(session_attributes['currentStep']) + 1)
+        session['attributes']['currentStep'] = curr_step = session_attributes['currentStep'] + 1
         session['attributes']['numberOfSteps'] = curr_step
-        session['attributes']['listItems'][curr_step] = intent['slots']['Item']['value']
+        session['attributes']['listItems'][str(curr_step)] = intent['slots']['Item']['value']
 
         # Add it to the database
         update_list(session=session)
@@ -433,9 +433,9 @@ def delete_list(intent, session):
 
     if listName == session['attributes']['currentList']:
         session['attributes']['currentList'] = 'NONE'
-        session['attributes']['currentStep'] = '0'
+        session['attributes']['currentStep'] = 0
         session['attributes']['currentTask'] = 'None'
-        session['attributes']['numberOfSteps'] = '0'
+        session['attributes']['numberOfSteps'] = 0
         session['attributes']['listItems'] = {}
 
     table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
@@ -544,8 +544,8 @@ def get_next_item_from_list(session):
         speech_output = "You've reached the end of your list {}. Start over by saying: 'start over'."
         should_end_session = True
     else:  # Able to continue to the next item in the list
-        session['attributes']['currentStep'] = curr_step = str(int(session['attributes']['currentStep']) + 1)
-        next_item = session['attributes']['listItems'][curr_step]
+        session['attributes']['currentStep'] = curr_step = session['attributes']['currentStep'] + 1
+        next_item = session['attributes']['listItems'][str(curr_step)]
         speech_output = "{}".format(next_item)
         should_end_session = False  # Make it easy to get the next step right away
         update_session(session=session)
@@ -570,7 +570,7 @@ def handle_start_over_request(session):
         speech_output = "You are in {} mode. Save your list by saying: 'save' or 'stop' before trying to " \
                         "start over".format(session['attributes']['currentTask'].lower())
     else:
-        session['attributes']['currentStep'] = '0'
+        session['attributes']['currentStep'] = 0
         update_session(session=session)
         speech_output = "Restarting."
 
@@ -600,8 +600,8 @@ def peek_at_next_item_from_list(session):
         speech_output = "You're at the end of your list."
         should_end_session = True
     else:  # Able to peek at the next item in the list
-        curr_step = str(int(session['attributes']['currentStep']) + 1)
-        next_item = session['attributes']['listItems'][curr_step]
+        curr_step = session['attributes']['currentStep'] + 1
+        next_item = session['attributes']['listItems'][str(curr_step)]
         speech_output = "{}".format(next_item)
         should_end_session = False  # Make it easy to get the next step right away
 
@@ -625,18 +625,18 @@ def get_prev_item_from_list(session):
                         "a list. Or, if you haven't created a list yet, say: 'create' and the name of the " \
                         "list that you want to create."
         should_end_session = True
-    elif session['attributes']['currentStep'] == 'NONE':
+    elif session['attributes']['currentStep'] == 0:
         speech_output = ""
         should_end_session = True
-    elif session['attributes']['currentStep'] < '2':
-        session['attributes']['currentStep'] = '0'
+    elif session['attributes']['currentStep'] < 2:
+        session['attributes']['currentStep'] = 0
         update_session(session=session)
         update_list(session=session)
         speech_output = "You're at the beginning of your list."
         should_end_session = True
     else:  # Able to continue to the next item in the list
-        session['attributes']['currentStep'] = curr_step = str(int(session['attributes']['currentStep']) - 1)
-        next_item = session['attributes']['listItems'][curr_step]
+        session['attributes']['currentStep'] = curr_step = session['attributes']['currentStep'] - 1
+        next_item = session['attributes']['listItems'][str(curr_step)]
         speech_output = "{}".format(next_item)
         should_end_session = False  # Make it easy to get the next step right away
         update_session(session=session)
@@ -662,15 +662,15 @@ def review_previous_item_from_list(session):
                         "a list. Or, if you haven't created a list yet, say: 'create' and the name of the " \
                         "list that you want to create."
         should_end_session = True
-    elif session['attributes']['currentStep'] == 'NONE':
+    elif session['attributes']['currentStep'] == 0:
         speech_output = ""
         should_end_session = True
-    elif session['attributes']['currentStep'] == '1':
+    elif session['attributes']['currentStep'] == 0:
         speech_output = "You're at the beginning of your list."
         should_end_session = True
     else:
-        curr_step = str(int(session['attributes']['currentStep']) - 1)
-        next_item = session['attributes']['listItems'][curr_step]
+        curr_step = session['attributes']['currentStep'] - 1
+        next_item = session['attributes']['listItems'][str(curr_step)]
         speech_output = "{}".format(next_item)
         should_end_session = False  # Make it easy to get the next step right away
 
@@ -702,7 +702,7 @@ def load_session(session):
             session['attributes'] = {}
         session['attributes']['currentList'] = "NONE"
         session['attributes']['currentTask'] = "NONE"
-        session['attributes']['currentStep'] = "NONE"
+        session['attributes']['currentStep'] = 0
     print("userId: {}\n"
           "Loaded: session_attributes = {}".format(userId, session['attributes']))
 
