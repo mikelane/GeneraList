@@ -101,17 +101,14 @@ def get_welcome_response(session):
     session_attributes = session.get('attributes', {})
     card_title = 'Welcome to GeneraList'
 
-    print("***GET_WELCOME_RESPONSE, session: {}".format(session))
+    print("***GET_WELCOME_RESPONSE, session: {}".format(session_attributes))
 
     if session_attributes['currentList'] != "NONE":
-        speech_output = "Welcome back. Go to the next item in your {} list by saying 'next'. " \
-                        "Repeat your current step by saying 'repeat'. " \
-                        "Edit your list by saying 'edit'. " \
-                        "Or you can say things like: " \
-                        "'review', 'preview', 'load', or 'create'.".format(session_attributes['currentList'])
-        reprompt_text = "To continue with your {} list say 'next', 'repeat', 'review', 'preview' or " \
-                        "'edit'." \
-                        "Say 'load' or 'create' to work with a different list."
+        speech_output = "Welcome back. Go to the next item in your {} list by saying " \
+                        "'next'.".format(session_attributes['currentList'])
+        reprompt_text = "To continue with your {} list say: 'next', 'repeat', 'review', 'preview' or " \
+                        "'edit'. Say: 'load' or 'create' to work with a " \
+                        "different list.".format(session_attributes['currentList'])
     else:
         speech_output = "Welcome to generalist. Do you want to: 'load', 'create', or 'edit' a list?"
         reprompt_text = "Say: 'load', 'create', or 'edit'."
@@ -131,24 +128,21 @@ def get_help_response(session):
     card_title = "Welcome to GeneraList"
     reprompt_text = ""
 
+    print("***GET HELP RESPONSE, session: {}".format(session_attributes))
+
     if session_attributes['currentTask'] == 'PLAY':
-        speech_output = "You currently have a list playback session in progress. To hear the next item" \
-                        "in your list, say: 'next'."
+        speech_output = "You currently have a list playback session in progress. To hear the next item " \
+                        "in your list, say: 'next'. "
         if session_attributes['currentStep'] > 1:
             speech_output += "To go back to the previous item in your list, say 'previous'. "
-        speech_output += "To stop playback so you can resume later, say: 'stop'. To stop and unload your " \
-                         "list, say: 'cancel'. If you want to load a new list, say: 'ask generalist " \
-                         "to load' and then a list name. To create a new list, say: 'ask generalist " \
-                         "to create a new list'."
+        speech_output += "Or you can say: 'stop', 'cancel', 'load', or 'create'."
     elif session_attributes['currentTask'] == 'CREATE':
-        speech_output = "You are in the process of creating a list. To add a new item, say: " \
-                        "'tell generalist to add item'. To finish editing your list and to save it for " \
-                        "later, say: 'tell generalist to stop'. To cancel your list and lose any " \
-                        "saved progress say: 'tell generalist cancel'."
+        speech_output = "You are creating a list. To add a new item, say: 'tell generalist to add item'. " \
+                        "To save your list say: 'tell generalist to save'. To cancel and lose your list say: " \
+                        "'tell generalist cancel'."
     elif session_attributes['currentTask'] == 'EDIT':
-        speech_output = "You are in the process of creating a list. To add a new item, say: " \
-                        "'tell generalist to add item'. To finish editing your list and to save it for " \
-                        "later, say: 'tell generalist to stop'."
+        speech_output = "You are editing a list. To add a new item, say: 'add' and the next item. To save your list, " \
+                        "say: 'tell generalist to save'."
     else:
         return get_welcome_response(session=session)
 
@@ -163,6 +157,8 @@ def handle_save_intent(session):
     card_title = 'Save'
     should_end_session = True
     session_attributes = session.get('attributes', {})
+
+    print("***HANDLE SAVE INTENT, session: {}".format(session_attributes))
 
     # If the session is in create or edit mode, update the list, and set the stored status accordingly
     if session_attributes['currentTask'] in ['CREATE', 'EDIT']:
@@ -196,6 +192,8 @@ def handle_session_stop_request(session):
     should_end_session = True
     session_attributes = session.get('attributes', {})
 
+    print("***HANDLE SESSION STOP REQUEST, session: {}".format(session_attributes))
+
     # If the session is in create or edit mode, update the list, and set the stored status accordingly
     if session_attributes['currentTask'] in ['CREATE', 'EDIT']:
         # Update the list to start at the first step when loaded.
@@ -227,6 +225,8 @@ def handle_session_cancel_request(session):
     # TODO smartly handle cancel requests.
     card_title = 'Canceled'
     session_attributes = session.get('attributes', {})
+
+    print("***HANDLE SESSION CANCEL REQUEST, session: {}".format(session_attributes))
 
     speech_output = ""
     reprompt_text = ""
@@ -263,8 +263,8 @@ def create_list(intent, session):
     with a message that tells the user to modify a list instead."""
     card_title = intent['name']
 
-    print("***CREATE LIST intent: {}".format(intent))
-    print("***CREATE LIST session: {}".format(session))
+    print("***CREATE LIST session: {}".format(session['attributes']))
+    print("***CREATE LIST intent: {}".format(intent['slots']))
 
     if 'value' in intent['slots']['listName']:
         # First make sure we're not creating a list with the same name we're on
@@ -321,7 +321,7 @@ def create_list(intent, session):
                         "example say, 'Create brownie recipe.'"
         should_end_session = False
 
-    print("***END OF CREATE, session: {}".format(session))
+    print("***END OF CREATE, session: {}".format(session['attributes']))
 
     return build_response(session_attributes=session['attributes'],
                           speechlet_response=build_speechlet_response(title=card_title,
@@ -333,6 +333,9 @@ def create_list(intent, session):
 def edit_list(intent, session):
     """Edit a list (currently only supports adding to the list)."""
     card_title = "Edit the List"
+
+    print("***END LIST, session: {}".format(session.get('attributes', {})))
+    print("***END LIST, intent: {}".format(intent['slots']))
 
     # Update the session and current list in case this gets called during the middle of a session
     update_session(session=session)
@@ -398,12 +401,13 @@ def add_item(intent, session):
     card_title = intent['name']
     session_attributes = session.get('attributes', {})
 
+    print("***ADD ITEM. Session: {}".format(session_attributes))
+    print("***ADD ITEM. Intent: {}".format(intent['slots']))
+
     if session_attributes['currentTask'] not in ['CREATE', 'EDIT']:
         # If not in create or edit mode, we can't add an item.
         should_end_session = True
-        speech_output = "I can't add a task if you're not in 'create' or 'edit' modes. Please say: " \
-                        "'tell generalist to create a new list.' " \
-                        "Or say: 'ask generalist to edit,' and a list name."
+        speech_output = "I can't add a task if you're not in 'create' or 'edit' modes."
         reprompt_text = ""
     elif 'Item' in intent['slots'] and 'value' not in intent['slots']['Item']:
         should_end_session = False
@@ -420,13 +424,16 @@ def add_item(intent, session):
 
         # Add it to the database
         update_list(session=session)
+        update_session(session=session)
 
         speech_output = "Adding '{}'. ".format(intent['slots']['Item']['value'])
         if session['attributes']['currentStep'] < 2:
-            speech_output += "Say: 'Add,' and the next item. Or say: 'save' or 'stop' to save the list. " \
+            speech_output += "Say: 'Add,' and the next item. Or say: 'save' to save the list. " \
                              "Saying 'cancel' stops without saving."
-        elif 2 <= session['attributes']['currentStep'] < 5:
+        elif 2 <= session['attributes']['currentStep'] < 3:
             speech_output += "Say: 'add,' and an item. Or say: 'save'."
+        else:
+            pass
         reprompt_text = "To add another item say: 'Add,' and the next item in the list." \
                         "Otherwise say: 'stop' or 'save' to save your progress or 'cancel'" \
                         "discard your list."
@@ -434,7 +441,7 @@ def add_item(intent, session):
         should_end_session = True
         speech_output = "I didn't understand you." \
                         "Say: 'Add,' and the next item in the list, " \
-                        "or say: 'all done'."
+                        "or say: 'save'."
         reprompt_text = ""
 
     return build_response(session_attributes=session['attributes'],
@@ -451,6 +458,9 @@ def delete_list(intent, session):
     userId = session['user']['userId']
     should_end_session = True
     reprompt_text = ""
+
+    print("***DELETE LIST, session: {}".format(session.get('attributes', {})))
+    print("***DELETE LIST, intent: {}".format(intent['slots']))
 
     if 'value' in intent['slots']['listName']:
         listName = intent['slots']['listName']['value']
@@ -504,6 +514,9 @@ def load_list(intent, session):
     card_title = intent['name']
     session_attributes = session.get('attributes', {})
     should_end_session = False  # Let the user work with the list right away
+
+    print("***LOAD LIST, session: {}".format(session_attributes))
+    print("***LOAD LIST, intent: {}".format(intent['slots']))
 
     if 'value' in intent['slots']['listName']:
         # If trying to load a new list
@@ -564,6 +577,8 @@ def get_next_item_from_list(session):
     card_title = "Get Next Item"
     reprompt_text = ""
 
+    print("***GET NEXT ITEM FROM LIST, session: {}".format(session.get('attributes', {})))
+
     # No list is currently loaded
     if 'currentList' not in session['attributes'] or session['attributes']['currentList'] == "NONE":
         speech_output = "You need to load a list before you can play it back. Say: 'load' and the name of " \
@@ -595,6 +610,8 @@ def handle_start_over_request(session):
     should_end_session = True
     reprompt_text = ""
 
+    print("***HANDLE START OVER REQUEST, session: {}".format(session.get('attributes', {})))
+
     if session['attributes']['currentList'] == "NONE":
         speech_output = "You must load a list before I can restart."
     elif session['attributes']['currentTask'] in ['CREATE', 'EDIT']:
@@ -619,6 +636,8 @@ def peek_at_next_item_from_list(session):
     steps."""
     card_title = "Peek at Next Item"
     reprompt_text = ""
+
+    print("***PEEK AT NEXT, session: {}".format(session.get('attributes', {})))
 
     # No list is currently loaded
     if 'currentList' not in session['attributes'] or session['attributes']['currentList'] == "NONE":
@@ -649,6 +668,8 @@ def get_prev_item_from_list(session):
     again? Yes, probably so."""
     card_title = "Get Previous Item"
     reprompt_text = ""
+
+    print("***GET PREV ITEM, session: {}".format(session.get('attributes', {})))
 
     # No list is currently loaded
     if 'currentList' not in session['attributes'] or session['attributes']['currentList'] == "NONE":
@@ -687,6 +708,8 @@ def review_previous_item_from_list(session):
     card_title = "Review Previous Item"
     reprompt_text = ""
 
+    print("***REVIEW PREVIOUS ITEM, session: {}".format(session.get('attributes', {})))
+
     # No list is currently loaded
     if 'currentList' not in session['attributes'] or session['attributes']['currentList'] == "NONE":
         speech_output = "You need to load a list before you can play it back. Say: 'load' and the name of " \
@@ -718,6 +741,8 @@ def load_session(session):
     """Use the current session's userId to load the stored session information"""
     userId = session['user']['userId']
 
+    print("***LOAD SESSION, session: {}".format(session.get('attributes')))
+
     stored_session_table = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
 
     try:
@@ -741,6 +766,9 @@ def load_session(session):
 def update_session(session):
     """Store the requested information in the StoredSession table."""
     session_attributes = session.get('attributes', {})
+
+    print("***UPDATE SESSION, session: {}".format(session_attributes))
+
     stored_session_table = boto3.resource('dynamodb').Table(SESSION_TABLENAME)
     try:
         stored_session_table.put_item(
@@ -757,7 +785,9 @@ def update_session(session):
 def update_list(session):
     """Store the current session information into the list."""
     session_attributes = session.get('attributes', {})
-    print("***UPDATE LIST: session: {}".format(session))
+
+    print("***UPDATE LIST: session: {}".format(session_attributes))
+
     lists_table = boto3.resource('dynamodb').Table(LISTS_TABLENAME)
 
     try:
@@ -787,13 +817,18 @@ def on_launch(launch_request, session):
     """ Called when the user launches the skill without specifying what they want"""
     print('on_launch requestId={}, sessionId={}'.format(launch_request['requestId'], session['sessionId']))
     # Dispatch to your skill's launch
-    print("***ON_LAUNCH session: {}".format(session))
+    print("***ON_LAUNCH session: {}".format(session.get('attributes', {})))
     return get_welcome_response(session=session)
 
 
 def on_intent(intent_request, session):
     """ Called when the user specifies an intent for this skill """
     print('on_intent requestId={}, sessionId={}'.format(intent_request['requestId'], session['sessionId']))
+
+    session_attributes = session.get('attributes', {})
+
+    print("***ON INTENT, session: {}".format(session_attributes))
+    print("***ON INTENT, intent_request: {}".format(session_attributes))
 
     intent = intent_request['intent']
     intent_name = intent_request['intent']['name']
